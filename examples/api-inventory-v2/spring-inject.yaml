@@ -67,13 +67,14 @@ spec:
         vault.hashicorp.com/agent-inject: 'true'
         vault.hashicorp.com/ca-key: '/var/run/secrets/kubernetes.io/serviceaccount/ca-bundle/service-ca.crt'
         vault.hashicorp.com/agent-inject-secret-application.yaml: internal/dev/inventory/api
+        vault.hashicorp.com/role: internal-dev-api-inventory-v2
+        vault.hashicorp.com/tls-skip-verify: 'true'
         vault.hashicorp.com/agent-inject-template-application.yaml: |
           {{- with secret "internal/dev/inventory/api" -}}
           secret:
             example:
-              password: {{ .Data.password }}
-          {{- end }}
-        vault.hashicorp.com/role: internal-dev-api-inventory-v2
+              password: {{ .Data.data.password }}
+          {{- end -}}
       labels:
         app: api-inventory-v2
         deploymentconfig: api-inventory-v2
