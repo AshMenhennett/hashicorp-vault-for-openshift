@@ -1,0 +1,132 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-inventory-v2
+  namespace: dev
+automountServiceAccountToken: false
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: api-inventory-v2
+    app.kubernetes.io/name: api-inventory-v2
+  name: api-inventory-v2
+  namespace: dev
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: api-inventory-v2
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  labels:
+    app.kubernetes.io/instance: api-inventory-v2
+    app.kubernetes.io/name: api-inventory-v2
+  name: api-inventory-v2
+  namespace: dev
+spec:
+  to:
+    kind: Service
+    name: api-inventory-v2
+
+---
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  labels:
+    app.kubernetes.io/instance: api-inventory-v2
+    app.kubernetes.io/name: api-inventory-v2
+  name: api-inventory-v2
+  namespace: dev
+spec:
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - api-inventory-v2
+        from:
+          kind: ImageStreamTag
+          name: 'api-inventory-v2:latest'
+  replicas: 1
+  selector:
+    app: api-inventory-v2
+    deploymentconfig: api-inventory-v2
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: 'true'
+        vault.hashicorp.com/ca-key: '/var/run/secrets/kubernetes.io/serviceaccount/ca-bundle/service-ca.crt'
+        vault.hashicorp.com/agent-inject-secret-application.yaml: internal/dev/inventory/api
+        vault.hashicorp.com/agent-inject-template-application.yaml: |
+          {{- with secret "internal/dev/inventory/api" -}}
+          secret:
+            example:
+              password: {{ .Data.password }}
+          {{- end }}
+        vault.hashicorp.com/role: internal-dev-api-inventory-v2
+      labels:
+        app: api-inventory-v2
+        deploymentconfig: api-inventory-v2
+    spec:
+      containers:
+      - env:
+        - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+          value: /vault/secrets/application.yaml
+        image: api-inventory-v2:latest
+        imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 3
+        name: api-inventory-v2
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/run/secrets/kubernetes.io/serviceaccount/ca-bundle
+          name: vault-cabundle
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: api-inventory-v2
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          name: vault-agent-cabundle
+        name: vault-cabundle
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: vault-agent-cabundle
+  namespace: dev
+  labels:
+    app.kubernetes.io/instance: vault-agent
+    app.kubernetes.io/name: vault-agent
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+data: {}
